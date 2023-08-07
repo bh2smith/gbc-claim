@@ -60,9 +60,7 @@ class RewardClaimer:
             print(f"invoking claimWithdrawal for {self.account}...")
             self.claim_withdrawal()
         else:
-            print(
-                f"reward balance below minimum withdraw of {min_amount/ 1e18} GNO"
-            )
+            print(f"reward balance below minimum withdraw of {min_amount/ 1e18} GNO")
 
 
 if __name__ == "__main__":
