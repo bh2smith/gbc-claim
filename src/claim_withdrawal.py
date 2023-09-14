@@ -27,7 +27,10 @@ class RewardClaimer:
         web3 = self.web3
         load_dotenv()
         private_key = os.environ["PK"]
-        caller: LocalAccount = web3.eth.account.from_key(private_key)
+        try:
+            caller: LocalAccount = web3.eth.account.from_key(private_key)
+        except ValueError as err:
+            raise EnvironmentError("Invalid account key (PK) provided!", err) from err
         tx_dict = self.claim_contract.functions.claimWithdrawal(
             self.account
         ).build_transaction(
