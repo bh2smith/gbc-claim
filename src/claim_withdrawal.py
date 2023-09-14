@@ -1,6 +1,7 @@
 """Script to Check or Claim GNO for Gnosis Beacon Chain Validators"""
 import argparse
 import os
+import sys
 
 from dotenv import load_dotenv
 from eth_account.signers.local import LocalAccount
@@ -30,7 +31,7 @@ class RewardClaimer:
         try:
             caller: LocalAccount = web3.eth.account.from_key(private_key)
         except ValueError as err:
-            raise EnvironmentError("Invalid account key (PK) provided!", err) from err
+            sys.exit(f"Invalid account key (PK) provided: {err}")
         tx_dict = self.claim_contract.functions.claimWithdrawal(
             self.account
         ).build_transaction(
