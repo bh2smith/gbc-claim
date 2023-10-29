@@ -78,8 +78,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--threshold",
         type=int,
-        default=pow(10, 18),
-        help="minimum amount to claim (default is 1 GNO)",
+        default=pow(10, 19),
+        help="minimum amount to claim (default is 10 GNO)",
     )
 
     args, _ = parser.parse_known_args()

@@ -33,7 +33,3 @@ types: install
 
 .PHONY: check
 check: fmt lint types
-
-.PHONY: test-unit
-test-unit: install
-	$(ACTIVATE); python -m pytest tests/unit
