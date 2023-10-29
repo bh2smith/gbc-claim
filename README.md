@@ -11,7 +11,7 @@ options:
   -h, --help            show this help message and exit
   --account ACCOUNT     Ethereum Address to claim withdraw for
   --threshold THRESHOLD
-                        minimum amount to claim (default is 1 GNO)
+                        minimum amount to claim (default is 10 GNO)
 ```
 
 ### Docker Remote
@@ -24,7 +24,7 @@ where
 
 - `PK` is any private key with at least 0.01 (i.e. sufficient) xdai.
 - `ETH1_WITHDRAWAL_ADDRESS` is the wallet you want to withdraw rewards for
-- [optional] `MIN_WITHDRAW` (in WEI) is the minimum amount worth withdrawing (default is 1 GNO)
+- [optional] `MIN_WITHDRAW` (in WEI) is the minimum amount worth withdrawing (default is 10 GNO)
 
 
 ### Locally

@@ -1,6 +1,9 @@
 -r prod.txt
-types-requests>=2.31.0
-black==23.7.0
-mypy==1.4.1
-pylint==2.17.5
-pytest==7.4.0
+types-requests==2.31.0.10
+black==23.10.1
+mypy==1.6.1
+pylint==3.0.2
+pytest==7.4.3
+
+# Temporary
+types-setuptools==68.2.0.0
