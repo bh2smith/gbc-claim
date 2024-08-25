@@ -1,4 +1,5 @@
 """Script to Check or Claim GNO for Gnosis Beacon Chain Validators"""
+
 import argparse
 import os
 import sys
