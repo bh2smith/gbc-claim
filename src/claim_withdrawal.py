@@ -44,7 +44,7 @@ class RewardClaimer:
         )
 
         signed_tx = web3.eth.account.sign_transaction(tx_dict, private_key)
-        send_tx = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        send_tx = web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
         # Wait for transaction receipt
         tx_receipt = web3.eth.wait_for_transaction_receipt(send_tx)
