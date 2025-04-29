@@ -10,4 +10,4 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 COPY --from=builder /usr/src/app/target/release/gbc-claim /usr/local/bin/gbc-claim
 COPY --from=builder /usr/src/app/abis /usr/local/bin/abis
 WORKDIR /usr/local/bin
-ENTRYPOINT ["gbc-claim"] 
+ENTRYPOINT ["gbc-claim"]
