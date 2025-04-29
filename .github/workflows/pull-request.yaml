@@ -1,25 +1,19 @@
 name: pull request
+
 on:
   pull_request:
   push:
     branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  python:
+  build:
+
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install Requirements
-        run:
-          pip install -r requirements/dev.txt
-      - name: Pylint
-        run:
-          pylint src/
-      - name: Black
-        run:
-          black --check ./
-      - name: Type Check (mypy)
-        run: mypy src --strict
+    - uses: actions/checkout@v4
+    - name: Lint & Check
+      run: cargo fmt --check && cargo clippy --all-targets --verbose
