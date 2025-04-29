@@ -1,0 +1,10 @@
+[package]
+name = "gbc-claim-rs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.44", features = ["macros", "rt-multi-thread"] }
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+alloy = "0.15.6"
