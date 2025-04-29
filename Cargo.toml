@@ -1,5 +1,5 @@
 [package]
-name = "gbc-claim-rs"
+name = "gbc-claim"
 version = "0.1.0"
 edition = "2024"
 
