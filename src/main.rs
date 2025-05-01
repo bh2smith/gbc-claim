@@ -71,10 +71,14 @@ async fn main() -> Result<()> {
     if reward.gt(&min_amount) {
         // Try claim
         let tx = contract.claimWithdrawal(account).send().await?;
-        println!("claimed at txHash: 0x{:x}", tx.tx_hash());
+        println!(
+            "claimed {} at: https://gnosisscan.io/tx/0x{:x}",
+            pretty_u256(reward, 18),
+            tx.tx_hash()
+        );
     } else {
         println!(
-            "reward balance {} below minimum withdraw of {} GNO",
+            "reward balance {} below threshold of {} GNO",
             pretty_u256(reward, 18),
             args.threshold as f64 / 1e18
         );
