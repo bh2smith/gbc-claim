@@ -30,6 +30,31 @@ sol!(
     "abis/SBCDepositContract.json"
 );
 
+fn pretty_u256(value: U256, decimals: usize) -> String {
+    let ten = U256::from(10);
+    let base = ten.pow(U256::from(decimals));
+
+    let whole = value / base;
+    let frac = value % base;
+
+    let mut frac_str = frac.to_string();
+
+    // Pad with leading zeros if necessary
+    if frac_str.len() < decimals {
+        let pad = "0".repeat(decimals - frac_str.len());
+        frac_str = format!("{pad}{frac_str}");
+    }
+
+    // Trim trailing zeros for pretty output
+    let frac_str_trimmed = frac_str.trim_end_matches('0');
+
+    if frac_str_trimmed.is_empty() {
+        whole.to_string()
+    } else {
+        format!("{}.{}", whole, frac_str_trimmed)
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -49,7 +74,8 @@ async fn main() -> Result<()> {
         println!("claimed at txHash: 0x{:x}", tx.tx_hash());
     } else {
         println!(
-            "reward balance below minimum withdraw of {} GNO",
+            "reward balance {} below minimum withdraw of {} GNO",
+            pretty_u256(reward, 18),
             args.threshold as f64 / 1e18
         );
     }
