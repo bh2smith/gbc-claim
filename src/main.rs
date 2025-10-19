@@ -9,7 +9,7 @@ use clap::Parser;
 use std::env;
 
 const CLAIM_PROXY_ADDRESS: &str = "0x0B98057eA310F4d31F2a452B414647007d1645d9";
-const NODE_URL: &str = "https://rpc.gnosischain.com";
+const DEFAULT_NODE_URL: &str = "https://rpc.gnosischain.com";
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -61,9 +61,10 @@ async fn main() -> Result<()> {
 
     let account = args.account.parse::<Address>()?;
     let signer: PrivateKeySigner = env::var("PK").unwrap().parse().unwrap();
-    let provider = ProviderBuilder::new()
-        .wallet(signer)
-        .connect_http(NODE_URL.try_into()?);
+    let rpc_url = env::var("ETH_RPC")
+        .unwrap_or(DEFAULT_NODE_URL.to_string())
+        .parse()?;
+    let provider = ProviderBuilder::new().wallet(signer).connect_http(rpc_url);
     let contract = DepositContract::new(CLAIM_PROXY_ADDRESS.parse::<Address>()?, provider);
 
     let reward = contract.withdrawableAmount(account).call().await?;
