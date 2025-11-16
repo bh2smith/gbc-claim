@@ -60,7 +60,10 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     let account = args.account.parse::<Address>()?;
-    let signer: PrivateKeySigner = env::var("PK").unwrap().parse().unwrap();
+    let signer: PrivateKeySigner = env::var("PK")
+        .expect("PK not set")
+        .parse()
+        .expect("invalid PK");
     let rpc_url = env::var("ETH_RPC")
         .unwrap_or(DEFAULT_NODE_URL.to_string())
         .parse()?;
