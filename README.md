@@ -27,6 +27,6 @@ cargo run --account=$ETH1_WITHDRAWAL_ADDRESS --threshold=$MIN_WITHDRAW
 
 ```shell
 docker build -t gbc-claim
-docker run --rm -e PK=$PK gbc-claim --account=$ETH1_WITHDRWAW_ADDRESS --threshold=$MIN_WITHDRAW
+docker run --rm -e PK=$PK gbc-claim --account=$ETH1_WITHDRAWAL_ADDRESS --threshold=$MIN_WITHDRAW
 ```
 
