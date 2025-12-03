@@ -1,6 +1,6 @@
 use alloy::{
     primitives::{Address, U256},
-    providers::ProviderBuilder,
+    providers::{DynProvider, Provider, ProviderBuilder},
     signers::local::PrivateKeySigner,
     sol,
 };
@@ -60,26 +60,52 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     let account = args.account.parse::<Address>()?;
-    let signer: PrivateKeySigner = env::var("PK")
-        .expect("PK not set")
-        .parse()
-        .expect("invalid PK");
+    let signer: Option<PrivateKeySigner> = match env::var("PK") {
+        Ok(val) => match val.parse() {
+            Ok(pk) => Some(pk),
+            Err(_) => {
+                eprintln!(
+                    "⚠️  PK env var is set but invalid — running in read-only mode (cannot claim)"
+                );
+                None
+            }
+        },
+        Err(_) => {
+            eprintln!("⚠️  PK not set — running in read-only mode (cannot claim)");
+            None
+        }
+    };
     let rpc_url = env::var("ETH_RPC")
         .unwrap_or(DEFAULT_NODE_URL.to_string())
         .parse()?;
-    let provider = ProviderBuilder::new().wallet(signer).connect_http(rpc_url);
+    let provider: DynProvider = if let Some(ref pk) = signer {
+        ProviderBuilder::new()
+            .wallet(pk.clone())
+            .connect_http(rpc_url)
+            .erased()
+    } else {
+        ProviderBuilder::new().connect_http(rpc_url).erased()
+    };
     let contract = DepositContract::new(CLAIM_PROXY_ADDRESS.parse::<Address>()?, provider);
 
     let reward = contract.withdrawableAmount(account).call().await?;
     let min_amount = U256::try_from(args.threshold)?;
     if reward.gt(&min_amount) {
-        // Try claim
-        let tx = contract.claimWithdrawal(account).send().await?;
-        println!(
-            "claimed {} at: https://gnosisscan.io/tx/0x{:x}",
-            pretty_u256(reward, 18),
-            tx.tx_hash()
-        );
+        // Only try to claim if we actually have a signer
+        if signer.is_none() {
+            eprintln!(
+                "⚠️  Reward ({}) is above threshold, but no PK is configured.\n\
+                 🔒 Read-only mode: cannot send claim transaction.",
+                pretty_u256(reward, 18),
+            );
+        } else {
+            let tx = contract.claimWithdrawal(account).send().await?;
+            println!(
+                "claimed {} at: https://gnosisscan.io/tx/0x{:x}",
+                pretty_u256(reward, 18),
+                tx.tx_hash()
+            );
+        }
     } else {
         println!(
             "reward balance {} below threshold of {} GNO",
