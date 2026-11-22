@@ -1,8 +1,9 @@
 use alloy::{
     primitives::{Address, U256},
-    providers::{DynProvider, Provider, ProviderBuilder},
+    providers::ProviderBuilder,
     signers::local::PrivateKeySigner,
     sol,
+    transports::http::reqwest::Url,
 };
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -78,37 +79,54 @@ fn gno(value: U256) -> String {
     format!("{} GNO", pretty_u256(value, 18))
 }
 
-fn load_signer(keystore: Option<&str>) -> Result<Option<PrivateKeySigner>> {
-    let pk = env::var("PK").ok().filter(|pk| !pk.is_empty());
-    match (pk, keystore) {
-        (Some(_), Some(_)) => bail!("both PK and --keystore are set; use only one"),
-        (Some(pk), None) => Ok(Some(pk.parse().context("PK is not a valid private key")?)),
-        (None, Some(keystore)) => {
-            let mut path = PathBuf::from(keystore);
-            if !path.exists() && !keystore.contains('/') {
-                let home = env::var("HOME").context("HOME is not set")?;
-                path = PathBuf::from(home)
-                    .join(".foundry/keystores")
-                    .join(keystore);
+/// Where the claim signer comes from. Checked at startup, unlocked only when a claim is due.
+enum Signer {
+    PrivateKey(PrivateKeySigner),
+    Keystore(PathBuf),
+}
+
+impl Signer {
+    fn from_config(keystore: Option<&str>) -> Result<Option<Self>> {
+        let pk = env::var("PK").ok().filter(|pk| !pk.is_empty());
+        match (pk, keystore) {
+            (Some(_), Some(_)) => bail!("both PK and --keystore are set; use only one"),
+            (Some(pk), None) => Ok(Some(Self::PrivateKey(
+                pk.parse().context("PK is not a valid private key")?,
+            ))),
+            (None, Some(keystore)) => {
+                let mut path = PathBuf::from(keystore);
+                if !path.exists() && !keystore.contains('/') {
+                    let home = env::var("HOME").context("HOME is not set")?;
+                    path = PathBuf::from(home)
+                        .join(".foundry/keystores")
+                        .join(keystore);
+                }
+                if !path.exists() {
+                    bail!(
+                        "keystore {path:?} not found. In Docker, mount your keystores with \
+                         -v ~/.foundry/keystores:/keystores:ro"
+                    );
+                }
+                Ok(Some(Self::Keystore(path)))
             }
-            if !path.exists() {
-                bail!(
-                    "keystore {path:?} not found. In Docker, mount your keystores with \
-                     -v ~/.foundry/keystores:/keystores:ro"
-                );
-            }
-            let password = match env::var("KEYSTORE_PASSWORD") {
-                Ok(password) => password,
-                Err(_) => rpassword::prompt_password("Keystore password: ").context(
-                    "could not prompt for the keystore password (in Docker, add -it); \
-                     or set KEYSTORE_PASSWORD",
-                )?,
-            };
-            let signer = PrivateKeySigner::decrypt_keystore(&path, password)
-                .with_context(|| format!("could not decrypt keystore {path:?}"))?;
-            Ok(Some(signer))
+            (None, None) => Ok(None),
         }
-        (None, None) => Ok(None),
+    }
+
+    fn unlock(self) -> Result<PrivateKeySigner> {
+        let path = match self {
+            Self::PrivateKey(signer) => return Ok(signer),
+            Self::Keystore(path) => path,
+        };
+        let password = match env::var("KEYSTORE_PASSWORD") {
+            Ok(password) => password,
+            Err(_) => rpassword::prompt_password("Keystore password: ").context(
+                "could not prompt for the keystore password (in Docker, add -it); \
+                 or set KEYSTORE_PASSWORD",
+            )?,
+        };
+        PrivateKeySigner::decrypt_keystore(&path, password)
+            .with_context(|| format!("could not decrypt keystore {path:?}"))
     }
 }
 
@@ -116,18 +134,15 @@ fn load_signer(keystore: Option<&str>) -> Result<Option<PrivateKeySigner>> {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let signer = load_signer(args.keystore.as_deref())?;
-    let rpc_url = args.rpc_url.parse().context("invalid RPC URL")?;
-    let provider: DynProvider = match signer {
-        Some(ref signer) => ProviderBuilder::new()
-            .wallet(signer.clone())
-            .connect_http(rpc_url)
-            .erased(),
-        None => ProviderBuilder::new().connect_http(rpc_url).erased(),
-    };
-    let contract = DepositContract::new(CLAIM_PROXY_ADDRESS.parse::<Address>()?, provider);
+    let signer = Signer::from_config(args.keystore.as_deref())?;
+    let rpc_url: Url = args.rpc_url.parse().context("invalid RPC URL")?;
+    let claim_proxy = CLAIM_PROXY_ADDRESS.parse::<Address>()?;
 
-    let reward = contract.withdrawableAmount(args.account).call().await?;
+    let reader = ProviderBuilder::new().connect_http(rpc_url.clone());
+    let reward = DepositContract::new(claim_proxy, reader)
+        .withdrawableAmount(args.account)
+        .call()
+        .await?;
     if reward.is_zero() {
         println!("nothing to claim for {}", args.account);
         return Ok(());
@@ -141,16 +156,22 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    if signer.is_none() {
+    let Some(signer) = signer else {
         eprintln!(
             "⚠️  Reward ({}) is at or above the threshold, but no signer is configured.\n\
              🔒 Read-only mode: set PK or --keystore to send the claim transaction.",
             gno(reward),
         );
         return Ok(());
-    }
+    };
 
-    let pending = contract.claimWithdrawal(args.account).send().await?;
+    let wallet = ProviderBuilder::new()
+        .wallet(signer.unlock()?)
+        .connect_http(rpc_url);
+    let pending = DepositContract::new(claim_proxy, wallet)
+        .claimWithdrawal(args.account)
+        .send()
+        .await?;
     let tx_url = format!("https://gnosisscan.io/tx/{}", pending.tx_hash());
     println!("sent claim for {}: {tx_url}", gno(reward));
     let receipt = pending
