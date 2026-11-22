@@ -69,8 +69,9 @@ cast wallet import my-claimer --interactive
 cargo run --release -- --account=$ETH1_WITHDRAWAL_ADDRESS --keystore my-claimer
 ```
 
-The tool asks for the password, or reads it from `KEYSTORE_PASSWORD` for unattended runs. With
-Docker, mount your keystores so names resolve the same way, and add `-it` for the password prompt:
+The keystore is only unlocked when a claim is due, so runs below the threshold never ask for the
+password. When a claim is due, the tool asks for the password, or reads it from
+`KEYSTORE_PASSWORD` for unattended runs. With Docker, mount your keystores so names resolve the same way, and add `-it` for the password prompt:
 
 ```shell
 docker run --rm -it --env-file .env -v ~/.foundry/keystores:/keystores:ro \
