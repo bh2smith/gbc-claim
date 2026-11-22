@@ -4,23 +4,42 @@ use alloy::{
     signers::local::PrivateKeySigner,
     sol,
 };
-use anyhow::Result;
+use anyhow::{Context, Result, bail};
 use clap::Parser;
-use std::env;
+use std::{env, path::PathBuf};
 
 const CLAIM_PROXY_ADDRESS: &str = "0x0B98057eA310F4d31F2a452B414647007d1645d9";
 const DEFAULT_NODE_URL: &str = "https://rpc.gnosischain.com";
 
+/// Claims Gnosis Chain validator withdrawals for a withdrawal address.
+///
+/// The transaction signer only pays gas; claimed GNO always goes to the withdrawal address.
+/// Provide a signer with the PK env var or --keystore. Without one, the tool only reports
+/// the claimable balance.
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about)]
 struct Args {
-    /// Ethereum Address to claim withdraw for
-    #[arg(short, long)]
-    account: String,
+    /// Withdrawal address to claim for
+    #[arg(short, long, env = "ETH1_WITHDRAWAL_ADDRESS")]
+    account: Address,
 
-    /// Minimum amount to claim (in wei, default is 1 GNO)
-    #[arg(short, long, default_value_t = 1_000_000_000_000_000_000)]
-    threshold: u128,
+    /// Minimum amount to claim, in wei (default is 1 GNO)
+    #[arg(
+        short,
+        long,
+        env = "MIN_WITHDRAW",
+        default_value = "1000000000000000000"
+    )]
+    threshold: U256,
+
+    /// Gnosis Chain RPC URL
+    #[arg(long, env = "ETH_RPC", default_value = DEFAULT_NODE_URL)]
+    rpc_url: String,
+
+    /// Encrypted keystore to sign with: a file path, or a name in ~/.foundry/keystores
+    /// (as created by `cast wallet import`). Reads the password from KEYSTORE_PASSWORD or prompts.
+    #[arg(long, env = "KEYSTORE")]
+    keystore: Option<String>,
 }
 
 sol!(
@@ -55,64 +74,92 @@ fn pretty_u256(value: U256, decimals: usize) -> String {
     }
 }
 
+fn gno(value: U256) -> String {
+    format!("{} GNO", pretty_u256(value, 18))
+}
+
+fn load_signer(keystore: Option<&str>) -> Result<Option<PrivateKeySigner>> {
+    let pk = env::var("PK").ok().filter(|pk| !pk.is_empty());
+    match (pk, keystore) {
+        (Some(_), Some(_)) => bail!("both PK and --keystore are set; use only one"),
+        (Some(pk), None) => Ok(Some(pk.parse().context("PK is not a valid private key")?)),
+        (None, Some(keystore)) => {
+            let mut path = PathBuf::from(keystore);
+            if !path.exists() && !keystore.contains('/') {
+                let home = env::var("HOME").context("HOME is not set")?;
+                path = PathBuf::from(home)
+                    .join(".foundry/keystores")
+                    .join(keystore);
+            }
+            if !path.exists() {
+                bail!("keystore {path:?} not found");
+            }
+            let password = match env::var("KEYSTORE_PASSWORD") {
+                Ok(password) => password,
+                Err(_) => rpassword::prompt_password("Keystore password: ")
+                    .context("could not read the keystore password; set KEYSTORE_PASSWORD")?,
+            };
+            let signer = PrivateKeySigner::decrypt_keystore(&path, password)
+                .with_context(|| format!("could not decrypt keystore {path:?}"))?;
+            Ok(Some(signer))
+        }
+        (None, None) => Ok(None),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let account = args.account.parse::<Address>()?;
-    let signer: Option<PrivateKeySigner> = match env::var("PK") {
-        Ok(val) => match val.parse() {
-            Ok(pk) => Some(pk),
-            Err(_) => {
-                eprintln!(
-                    "⚠️  PK env var is set but invalid — running in read-only mode (cannot claim)"
-                );
-                None
-            }
-        },
-        Err(_) => {
-            eprintln!("⚠️  PK not set — running in read-only mode (cannot claim)");
-            None
-        }
-    };
-    let rpc_url = env::var("ETH_RPC")
-        .unwrap_or(DEFAULT_NODE_URL.to_string())
-        .parse()?;
-    let provider: DynProvider = if let Some(ref pk) = signer {
-        ProviderBuilder::new()
-            .wallet(pk.clone())
+    let signer = load_signer(args.keystore.as_deref())?;
+    let rpc_url = args.rpc_url.parse().context("invalid RPC URL")?;
+    let provider: DynProvider = match signer {
+        Some(ref signer) => ProviderBuilder::new()
+            .wallet(signer.clone())
             .connect_http(rpc_url)
-            .erased()
-    } else {
-        ProviderBuilder::new().connect_http(rpc_url).erased()
+            .erased(),
+        None => ProviderBuilder::new().connect_http(rpc_url).erased(),
     };
     let contract = DepositContract::new(CLAIM_PROXY_ADDRESS.parse::<Address>()?, provider);
 
-    let reward = contract.withdrawableAmount(account).call().await?;
-    let min_amount = U256::try_from(args.threshold)?;
-    if reward.gt(&min_amount) {
-        // Only try to claim if we actually have a signer
-        if signer.is_none() {
-            eprintln!(
-                "⚠️  Reward ({}) is above threshold, but no PK is configured.\n\
-                 🔒 Read-only mode: cannot send claim transaction.",
-                pretty_u256(reward, 18),
-            );
-        } else {
-            let tx = contract.claimWithdrawal(account).send().await?;
-            println!(
-                "claimed {} at: https://gnosisscan.io/tx/0x{:x}",
-                pretty_u256(reward, 18),
-                tx.tx_hash()
-            );
-        }
-    } else {
-        println!(
-            "reward balance {} below threshold of {} GNO",
-            pretty_u256(reward, 18),
-            args.threshold as f64 / 1e18
-        );
+    let reward = contract.withdrawableAmount(args.account).call().await?;
+    if reward.is_zero() {
+        println!("nothing to claim for {}", args.account);
+        return Ok(());
     }
+    if reward < args.threshold {
+        println!(
+            "reward balance {} below threshold of {}",
+            gno(reward),
+            gno(args.threshold)
+        );
+        return Ok(());
+    }
+
+    if signer.is_none() {
+        eprintln!(
+            "⚠️  Reward ({}) is at or above the threshold, but no signer is configured.\n\
+             🔒 Read-only mode: set PK or --keystore to send the claim transaction.",
+            gno(reward),
+        );
+        return Ok(());
+    }
+
+    let pending = contract.claimWithdrawal(args.account).send().await?;
+    let tx_url = format!("https://gnosisscan.io/tx/{}", pending.tx_hash());
+    println!("sent claim for {}: {tx_url}", gno(reward));
+    let receipt = pending
+        .get_receipt()
+        .await
+        .context("claim transaction was sent but its receipt could not be fetched")?;
+    if !receipt.status() {
+        bail!("claim transaction reverted: {tx_url}");
+    }
+    println!(
+        "claimed {} in block {}",
+        gno(reward),
+        receipt.block_number.unwrap_or_default()
+    );
 
     Ok(())
 }

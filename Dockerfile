@@ -18,9 +18,8 @@ FROM scratch
 # CA certs for HTTPS requests
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-# Your binary + abis
+# Binary (the ABI is embedded at compile time)
 COPY --from=builder /usr/src/app/target/x86_64-unknown-linux-musl/release/gbc-claim /gbc-claim
-COPY --from=builder /usr/src/app/abis /abis
 
 WORKDIR /
 ENTRYPOINT ["/gbc-claim"]
