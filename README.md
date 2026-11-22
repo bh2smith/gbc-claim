@@ -70,9 +70,9 @@ cargo run --release -- --account=$ETH1_WITHDRAWAL_ADDRESS --keystore my-claimer
 ```
 
 The tool asks for the password, or reads it from `KEYSTORE_PASSWORD` for unattended runs. With
-Docker, mount the keystore and pass its path:
+Docker, mount your keystores so names resolve the same way, and add `-it` for the password prompt:
 
 ```shell
-docker run --rm -it --env-file .env -v ~/.foundry/keystores:/keystores \
-  ghcr.io/bh2smith/gbc-claim --keystore /keystores/my-claimer
+docker run --rm -it --env-file .env -v ~/.foundry/keystores:/keystores:ro \
+  ghcr.io/bh2smith/gbc-claim --keystore my-claimer
 ```

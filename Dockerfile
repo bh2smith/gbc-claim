@@ -12,6 +12,10 @@ RUN rustup target add x86_64-unknown-linux-musl \
  && cargo build --release --target x86_64-unknown-linux-musl \
  && strip target/x86_64-unknown-linux-musl/release/gbc-claim
 
+# `--keystore <name>` looks in $HOME/.foundry/keystores. Point that at /keystores,
+# so `-v ~/.foundry/keystores:/keystores:ro --keystore <name>` works.
+RUN mkdir -p /out/.foundry && ln -s /keystores /out/.foundry/keystores
+
 # Runtime stage
 FROM scratch
 
@@ -22,4 +26,6 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /usr/src/app/target/x86_64-unknown-linux-musl/release/gbc-claim /gbc-claim
 
 WORKDIR /
+COPY --from=builder /out/.foundry /.foundry
+ENV HOME=/
 ENTRYPOINT ["/gbc-claim"]

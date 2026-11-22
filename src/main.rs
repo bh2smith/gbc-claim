@@ -92,12 +92,17 @@ fn load_signer(keystore: Option<&str>) -> Result<Option<PrivateKeySigner>> {
                     .join(keystore);
             }
             if !path.exists() {
-                bail!("keystore {path:?} not found");
+                bail!(
+                    "keystore {path:?} not found. In Docker, mount your keystores with \
+                     -v ~/.foundry/keystores:/keystores:ro"
+                );
             }
             let password = match env::var("KEYSTORE_PASSWORD") {
                 Ok(password) => password,
-                Err(_) => rpassword::prompt_password("Keystore password: ")
-                    .context("could not read the keystore password; set KEYSTORE_PASSWORD")?,
+                Err(_) => rpassword::prompt_password("Keystore password: ").context(
+                    "could not prompt for the keystore password (in Docker, add -it); \
+                     or set KEYSTORE_PASSWORD",
+                )?,
             };
             let signer = PrivateKeySigner::decrypt_keystore(&path, password)
                 .with_context(|| format!("could not decrypt keystore {path:?}"))?;
